@@ -75,7 +75,7 @@ class DefensaSt(State):
         # Si el jugador está vivo (coordenadas positivas) y alineado
         if player_x >= 0 and player_y >= 0:
             if abs(agent_x - player_x) < 1.0 or abs(agent_y - player_y) < 1.0:
-                return "ATAQUE" # Asumiendo que has llamado así a tu estado de ataque
+                return "Ataque" # Asumiendo que has llamado así a tu estado de ataque
                 
         return self.id
 
