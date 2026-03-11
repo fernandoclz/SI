@@ -1,134 +1,97 @@
 from StateMachine.State import State
-from States.AgentConsts import AgentConsts
+from States.AgentConsts import AgentConsts as ac
 
 class ExploracionSt(State):
-    
-    def __init__(self, id):
-        super().__init__(id)
-        # NUEVO: Pequeña memoria para no quedarnos atrapados en bucles de izquierda-derecha
-        self.last_evade = AgentConsts.MOVE_RIGHT
+    def __init__(self, name):
+        super().__init__(name)
+        self.evasion_dir = None
+
+    def Start(self, agent):
+        print("Estado Exploración iniciado")
 
     def Update(self, perception, map, agent):
-        action = AgentConsts.NOTHING
-        shot = False
-        can_fire = (perception[AgentConsts.CAN_FIRE] == 1.0)
-
-        agent_x = perception[AgentConsts.AGENT_X]
-        agent_y = perception[AgentConsts.AGENT_Y]
-        player_x = perception[AgentConsts.PLAYER_X]
-        player_y = perception[AgentConsts.PLAYER_Y]
-        cc_x = perception[AgentConsts.COMMAND_CENTER_X]
-        cc_y = perception[AgentConsts.COMMAND_CENTER_Y]
-
-        target_x, target_y = -1, -1
-        if player_x >= 0:
-            target_x, target_y = player_x, player_y
-        elif cc_x >= 0:
-            target_x, target_y = cc_x, cc_y
+        if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
+            target_x, target_y = perception[ac.LIFE_X], perception[ac.LIFE_Y]
         else:
-            target_x = perception[AgentConsts.LIFE_X]
-            target_y = perception[AgentConsts.LIFE_Y]
+            target_x, target_y = perception[ac.COMMAND_CENTER_X], perception[ac.COMMAND_CENTER_Y]
 
         if target_x < 0 or target_y < 0:
-            return AgentConsts.NOTHING, False
+            target_x, target_y = perception[ac.EXIT_X], perception[ac.EXIT_Y]
 
-        dx = target_x - agent_x
-        dy = target_y - agent_y
+        if target_x < 0 or target_y < 0:
+            return ac.NO_MOVE, False
 
-        # NAVEGACIÓN CON MEMORIA ANTI-BUCLES
+        agent_x, agent_y = int(perception[ac.AGENT_X]), int(perception[ac.AGENT_Y])
+        dx, dy = target_x - agent_x, target_y - agent_y
+
+        # CORREGIDO EL EJE Y
         if abs(dx) > abs(dy):
-            if dx > 0:
-                action = AgentConsts.MOVE_RIGHT
-                if perception[AgentConsts.NEIGHBORHOOD_RIGHT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-                    if dy > 0:
-                        action = AgentConsts.MOVE_DOWN
-                        self.last_evade = action
-                    elif dy < 0:
-                        action = AgentConsts.MOVE_UP
-                        self.last_evade = action
-                    else:
-                        action = self.last_evade # Usamos la memoria
-                elif perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.BRICK and can_fire:
-                    shot = True
-            else:
-                action = AgentConsts.MOVE_LEFT
-                if perception[AgentConsts.NEIGHBORHOOD_LEFT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    if dy > 0:
-                        action = AgentConsts.MOVE_DOWN
-                        self.last_evade = action
-                    elif dy < 0:
-                        action = AgentConsts.MOVE_UP
-                        self.last_evade = action
-                    else:
-                        action = self.last_evade
-                elif perception[AgentConsts.NEIGHBORHOOD_LEFT] == AgentConsts.BRICK and can_fire:
-                    shot = True
+            preferred = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
         else:
-            if dy > 0:
-                action = AgentConsts.MOVE_DOWN
-                if perception[AgentConsts.NEIGHBORHOOD_DOWN] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    if dx > 0:
-                        action = AgentConsts.MOVE_RIGHT
-                        self.last_evade = action
-                    elif dx < 0:
-                        action = AgentConsts.MOVE_LEFT
-                        self.last_evade = action
-                    else:
-                        action = self.last_evade
-                elif perception[AgentConsts.NEIGHBORHOOD_DOWN] == AgentConsts.BRICK and can_fire:
-                    shot = True
-            else:
-                action = AgentConsts.MOVE_UP
-                if perception[AgentConsts.NEIGHBORHOOD_UP] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    if dx > 0:
-                        action = AgentConsts.MOVE_RIGHT
-                        self.last_evade = action
-                    elif dx < 0:
-                        action = AgentConsts.MOVE_LEFT
-                        self.last_evade = action
-                    else:
-                        action = self.last_evade
-                elif perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.BRICK and can_fire:
-                    shot = True
+            preferred = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
 
-        # FILTRO DE SEGURIDAD EXTREMA
-        if action == AgentConsts.MOVE_UP and perception[AgentConsts.NEIGHBORHOOD_UP] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-        elif action == AgentConsts.MOVE_DOWN and perception[AgentConsts.NEIGHBORHOOD_DOWN] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-        elif action == AgentConsts.MOVE_RIGHT and perception[AgentConsts.NEIGHBORHOOD_RIGHT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-        elif action == AgentConsts.MOVE_LEFT and perception[AgentConsts.NEIGHBORHOOD_LEFT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
+        action = ac.NO_MOVE
+        if self._can_move(preferred, perception):
+            action = preferred
+            self.evasion_dir = None
+        else:
+            if self.evasion_dir and self._can_move(self.evasion_dir, perception):
+                action = self.evasion_dir
+            else:
+                if preferred in [ac.MOVE_UP, ac.MOVE_DOWN]:
+                    opciones = [ac.MOVE_RIGHT, ac.MOVE_LEFT] if dx >= 0 else [ac.MOVE_LEFT, ac.MOVE_RIGHT]
+                else:
+                    opciones = [ac.MOVE_UP, ac.MOVE_DOWN] if dy >= 0 else [ac.MOVE_DOWN, ac.MOVE_UP]
+
+                for op in opciones:
+                    if self._can_move(op, perception):
+                        action = op
+                        self.evasion_dir = op
+                        break
+            
+                if action == ac.NO_MOVE:
+                    ops = {ac.MOVE_UP: ac.MOVE_DOWN, ac.MOVE_DOWN: ac.MOVE_UP, ac.MOVE_LEFT: ac.MOVE_RIGHT, ac.MOVE_RIGHT: ac.MOVE_LEFT}
+                    opposite = ops.get(preferred, None)
+                    if opposite and self._can_move(opposite, perception):
+                        action = opposite
+                        self.evasion_dir = opposite
+
+        shot = False
+        mapping = {ac.MOVE_UP: ac.NEIGHBORHOOD_UP, ac.MOVE_DOWN: ac.NEIGHBORHOOD_DOWN, 
+                   ac.MOVE_LEFT: ac.NEIGHBORHOOD_LEFT, ac.MOVE_RIGHT: ac.NEIGHBORHOOD_RIGHT}
+        
+        if perception[mapping[preferred]] == ac.BRICK and perception[ac.NEIGHBORHOOD_DIST_UP + preferred - 1] < 1.0:
+            action = preferred
+            if perception[ac.ORIENTATION] == preferred and perception[ac.CAN_FIRE] == 1:
+                shot = True
 
         return action, shot
 
     def Transit(self, perception, map):
-        neighbors = [
-            perception[AgentConsts.NEIGHBORHOOD_UP],
-            perception[AgentConsts.NEIGHBORHOOD_DOWN],
-            perception[AgentConsts.NEIGHBORHOOD_LEFT],
-            perception[AgentConsts.NEIGHBORHOOD_RIGHT]
-        ]
-        if AgentConsts.SHELL in neighbors:
+        if self._bala_entrante(perception):
             return "Defensa"
-
-        agent_x = perception[AgentConsts.AGENT_X]
-        agent_y = perception[AgentConsts.AGENT_Y]
-        player_x = perception[AgentConsts.PLAYER_X]
-        player_y = perception[AgentConsts.PLAYER_Y]
-        cc_x = perception[AgentConsts.COMMAND_CENTER_X]
-        cc_y = perception[AgentConsts.COMMAND_CENTER_Y]
-
-        if player_x >= 0 and player_y >= 0:
-            if abs(agent_x - player_x) < 1.0 or abs(agent_y - player_y) < 1.0:
-                return "Ataque"
-        
-        elif cc_x >= 0 and cc_y >= 0:
-            if abs(agent_x - cc_x) < 1.0 or abs(agent_y - cc_y) < 1.0:
-                return "Ataque"
-
+        if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
+            return "Huida"
+        if perception[ac.PLAYER_X] >= 0 and perception[ac.PLAYER_Y] >= 0:
+            return "Ataque"
         return self.id
+        
+    def _bala_entrante(self, perception):
+        for dir_idx, dist_idx in [(ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DIST_UP),
+                                (ac.NEIGHBORHOOD_DOWN, ac.NEIGHBORHOOD_DIST_DOWN),
+                                (ac.NEIGHBORHOOD_LEFT, ac.NEIGHBORHOOD_DIST_LEFT),
+                                (ac.NEIGHBORHOOD_RIGHT, ac.NEIGHBORHOOD_DIST_RIGHT)]:
+            if perception[dir_idx] == ac.SHELL and perception[dist_idx] < 3: return True
+        return False
 
-    def Reset(self):
-        pass
+    def _can_move(self, action, perception):
+        obj, dist = None, 999.0
+        if action == ac.MOVE_UP: obj, dist = perception[ac.NEIGHBORHOOD_UP], perception[ac.NEIGHBORHOOD_DIST_UP]
+        elif action == ac.MOVE_DOWN: obj, dist = perception[ac.NEIGHBORHOOD_DOWN], perception[ac.NEIGHBORHOOD_DIST_DOWN]
+        elif action == ac.MOVE_LEFT: obj, dist = perception[ac.NEIGHBORHOOD_LEFT], perception[ac.NEIGHBORHOOD_DIST_LEFT]
+        elif action == ac.MOVE_RIGHT: obj, dist = perception[ac.NEIGHBORHOOD_RIGHT], perception[ac.NEIGHBORHOOD_DIST_RIGHT]
+        else: return False
+
+        if obj in [ac.UNBREAKABLE, ac.BRICK, ac.COMMAND_CENTER]:
+            if dist < 0.6: return False
+        return True

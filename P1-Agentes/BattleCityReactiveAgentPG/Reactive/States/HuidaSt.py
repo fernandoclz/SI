@@ -1,81 +1,58 @@
 from StateMachine.State import State
-from States.AgentConsts import AgentConsts
+from States.AgentConsts import AgentConsts as ac
 
 class HuidaSt(State):
-    
-    def __init__(self, id):
-        super().__init__(id)
+    def __init__(self, name):
+        super().__init__(name)
+
+    def Start(self, agent):
+        print("Estado Huida iniciado")
 
     def Update(self, perception, map, agent):
-        action = AgentConsts.NOTHING
-        shot = False
-        can_fire = (perception[AgentConsts.CAN_FIRE] == 1.0)
-
-        # 1. Obtenemos nuestras coordenadas y las de la vida extra
-        agent_x = perception[AgentConsts.AGENT_X]
-        agent_y = perception[AgentConsts.AGENT_Y]
-        target_x = perception[AgentConsts.LIFE_X]
-        target_y = perception[AgentConsts.LIFE_Y]
-
-        # Si no hay vida extra, no hacemos nada
-        if target_x < 0 or target_y < 0:
-            return AgentConsts.NOTHING, False
-
-        # 2. Navegación 
-        dx = target_x - agent_x
-        dy = target_y - agent_y
-
-        if abs(dx) > abs(dy):
-            if dx > 0:
-                action = AgentConsts.MOVE_RIGHT
-                if perception[AgentConsts.NEIGHBORHOOD_RIGHT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    action = AgentConsts.MOVE_DOWN if dy > 0 else AgentConsts.MOVE_UP
-                elif perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.BRICK and can_fire:
-                    shot = True
+        if perception[ac.LIFE_X] >= 0:
+            target_x, target_y = perception[ac.LIFE_X], perception[ac.LIFE_Y]
+            agent_x, agent_y = int(perception[ac.AGENT_X]), int(perception[ac.AGENT_Y])
+            dx, dy = target_x - agent_x, target_y - agent_y
+            
+            # CORREGIDO EL EJE Y
+            if abs(dx) > abs(dy):
+                action = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
             else:
-                action = AgentConsts.MOVE_LEFT
-                if perception[AgentConsts.NEIGHBORHOOD_LEFT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    action = AgentConsts.MOVE_DOWN if dy > 0 else AgentConsts.MOVE_UP
-                elif perception[AgentConsts.NEIGHBORHOOD_LEFT] == AgentConsts.BRICK and can_fire:
-                    shot = True
+                action = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
+                
+            if self._can_move(action, perception):
+                return action, False
+            else:
+                for a in [ac.MOVE_UP, ac.MOVE_DOWN, ac.MOVE_LEFT, ac.MOVE_RIGHT]:
+                    if self._can_move(a, perception):
+                        return a, False
+                return ac.NO_MOVE, False
         else:
-            if dy > 0:
-                action = AgentConsts.MOVE_DOWN
-                if perception[AgentConsts.NEIGHBORHOOD_DOWN] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    action = AgentConsts.MOVE_RIGHT if dx > 0 else AgentConsts.MOVE_LEFT
-                elif perception[AgentConsts.NEIGHBORHOOD_DOWN] == AgentConsts.BRICK and can_fire:
-                    shot = True
-            else:
-                action = AgentConsts.MOVE_UP
-                if perception[AgentConsts.NEIGHBORHOOD_UP] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:  
-                    action = AgentConsts.MOVE_RIGHT if dx > 0 else AgentConsts.MOVE_LEFT
-                elif perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.BRICK and can_fire:
-                    shot = True
-
-        # 3. FILTRO DE SEGURIDAD CONTRA MUROS
-        if action == AgentConsts.MOVE_UP and perception[AgentConsts.NEIGHBORHOOD_UP] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-        elif action == AgentConsts.MOVE_DOWN and perception[AgentConsts.NEIGHBORHOOD_DOWN] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-        elif action == AgentConsts.MOVE_RIGHT and perception[AgentConsts.NEIGHBORHOOD_RIGHT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-        elif action == AgentConsts.MOVE_LEFT and perception[AgentConsts.NEIGHBORHOOD_LEFT] in [AgentConsts.UNBREAKABLE, AgentConsts.SEMI_UNBREKABLE]:
-            action = AgentConsts.NOTHING
-
-        return action, shot
+            return ac.NO_MOVE, False
 
     def Transit(self, perception, map):
-        neighbors = [
-            perception[AgentConsts.NEIGHBORHOOD_UP],
-            perception[AgentConsts.NEIGHBORHOOD_DOWN],
-            perception[AgentConsts.NEIGHBORHOOD_LEFT],
-            perception[AgentConsts.NEIGHBORHOOD_RIGHT]
-        ]
-        
-        if AgentConsts.SHELL in neighbors:
+        if perception[ac.LIFE_X] < 0 or perception[ac.HEALTH] > 1:
+            return "Exploracion"
+        if self._bala_entrante(perception):
             return "Defensa"
-
         return self.id
 
-    def Reset(self):
-        pass
+    def _bala_entrante(self, perception):
+        for dir_idx, dist_idx in [(ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DIST_UP),
+                                (ac.NEIGHBORHOOD_DOWN, ac.NEIGHBORHOOD_DIST_DOWN),
+                                (ac.NEIGHBORHOOD_LEFT, ac.NEIGHBORHOOD_DIST_LEFT),
+                                (ac.NEIGHBORHOOD_RIGHT, ac.NEIGHBORHOOD_DIST_RIGHT)]:
+            if perception[dir_idx] == ac.SHELL and perception[dist_idx] < 3: return True
+        return False
+
+    def _can_move(self, action, perception):
+        obj, dist = None, 999.0
+        if action == ac.MOVE_UP: obj, dist = perception[ac.NEIGHBORHOOD_UP], perception[ac.NEIGHBORHOOD_DIST_UP]
+        elif action == ac.MOVE_DOWN: obj, dist = perception[ac.NEIGHBORHOOD_DOWN], perception[ac.NEIGHBORHOOD_DIST_DOWN]
+        elif action == ac.MOVE_LEFT: obj, dist = perception[ac.NEIGHBORHOOD_LEFT], perception[ac.NEIGHBORHOOD_DIST_LEFT]
+        elif action == ac.MOVE_RIGHT: obj, dist = perception[ac.NEIGHBORHOOD_RIGHT], perception[ac.NEIGHBORHOOD_DIST_RIGHT]
+        else: return False
+
+        if obj in [ac.UNBREAKABLE, ac.BRICK, ac.COMMAND_CENTER]:
+            if dist < 0.6: return False
+        return True

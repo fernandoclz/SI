@@ -1,83 +1,62 @@
 from StateMachine.State import State
-from States.AgentConsts import AgentConsts
+from States.AgentConsts import AgentConsts as ac
 
 class DefensaSt(State):
-    
-    def __init__(self, id):
-        super().__init__(id)
-        # Eliminamos el temporizador, ya no nos hace falta
+    def __init__(self, name):
+        super().__init__(name)
+
+    def Start(self, agent):
+        print("Estado Defensa iniciado")
 
     def Update(self, perception, map, agent):
-        action = AgentConsts.NOTHING
-        shot = False
-        can_fire = (perception[AgentConsts.CAN_FIRE] == 1.0)
+        bala_dir = self._bala_entrante(perception)
+        if bala_dir is None:
+            return ac.NO_MOVE, False
 
-        # 1. EVALUAR AMENAZAS INMEDIATAS (Jugador o Balas)
-        neighbors = {
-            AgentConsts.NEIGHBORHOOD_UP: AgentConsts.MOVE_UP,
-            AgentConsts.NEIGHBORHOOD_DOWN: AgentConsts.MOVE_DOWN,
-            AgentConsts.NEIGHBORHOOD_RIGHT: AgentConsts.MOVE_RIGHT,
-            AgentConsts.NEIGHBORHOOD_LEFT: AgentConsts.MOVE_LEFT
-        }
-        
-        # Movimientos opuestos para esquivar
-        evade_moves = {
-            AgentConsts.NEIGHBORHOOD_UP: AgentConsts.MOVE_DOWN,
-            AgentConsts.NEIGHBORHOOD_DOWN: AgentConsts.MOVE_UP,
-            AgentConsts.NEIGHBORHOOD_LEFT: AgentConsts.MOVE_RIGHT,
-            AgentConsts.NEIGHBORHOOD_RIGHT: AgentConsts.MOVE_LEFT
-        }
-
-        for n_index, move_action in neighbors.items():
-            # Si hay un jugador o una bala adyacente
-            if perception[n_index] == AgentConsts.PLAYER or perception[n_index] == AgentConsts.SHELL:
-                if can_fire:
-                    shot = True
-                    # IMPORTANTE: Nos movemos hacia la amenaza para "encararla" y poder dispararle
-                    action = move_action 
-                else:
-                    # Esquivamos en dirección opuesta
-                    action = evade_moves[n_index]
-                
-                return action, shot
-
-        # 2. NO HAY AMENAZA: IR AL COMMAND CENTER A DEFENDER
-        agent_x = perception[AgentConsts.AGENT_X]
-        agent_y = perception[AgentConsts.AGENT_Y]
-        cc_x = perception[AgentConsts.COMMAND_CENTER_X]
-        cc_y = perception[AgentConsts.COMMAND_CENTER_Y]
-
-        dx = cc_x - agent_x
-        dy = cc_y - agent_y
-
-        if dx == 0 and dy == 0:
-            action = AgentConsts.NOTHING
-        elif abs(dx) > abs(dy):
-            action = AgentConsts.MOVE_RIGHT if dx > 0 else AgentConsts.MOVE_LEFT
+        if perception[ac.CAN_FIRE] == 1:
+            action = self._dir_to_action(bala_dir)
+            if perception[ac.ORIENTATION] == action:
+                return action, True
+            else:
+                return action, False
         else:
-            action = AgentConsts.MOVE_DOWN if dy > 0 else AgentConsts.MOVE_UP
-
-        # Nota: Si te quedas atascado contra un muro con esta lógica, 
-        # tendrás que añadir comprobaciones de "si no hay muro delante" en el futuro.
-
-        return action, shot
+            if bala_dir in [ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DOWN]:
+                if self._can_move(ac.MOVE_LEFT, perception): return ac.MOVE_LEFT, False
+                elif self._can_move(ac.MOVE_RIGHT, perception): return ac.MOVE_RIGHT, False
+            else:
+                if self._can_move(ac.MOVE_UP, perception): return ac.MOVE_UP, False
+                elif self._can_move(ac.MOVE_DOWN, perception): return ac.MOVE_DOWN, False
+            
+            return ac.NO_MOVE, False
 
     def Transit(self, perception, map):
-        # CONDICIÓN DE SALIDA:
-        # Si estamos defendiendo la base pero vemos al jugador "a tiro" a lo lejos
-        # (coincide en X o en Y), pasamos al estado ATAQUE.
-        
-        agent_x = perception[AgentConsts.AGENT_X]
-        agent_y = perception[AgentConsts.AGENT_Y]
-        player_x = perception[AgentConsts.PLAYER_X]
-        player_y = perception[AgentConsts.PLAYER_Y]
-        
-        # Si el jugador está vivo (coordenadas positivas) y alineado
-        if player_x >= 0 and player_y >= 0:
-            if abs(agent_x - player_x) < 1.0 or abs(agent_y - player_y) < 1.0:
-                return "Ataque" # Asumiendo que has llamado así a tu estado de ataque
-                
+        if self._bala_entrante(perception) is None:
+            return "Exploracion"
         return self.id
 
-    def Reset(self):
-        pass # Ya no necesitamos resetear nada
+    def _bala_entrante(self, perception):
+        for dir_idx, dist_idx in [(ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DIST_UP),
+                                   (ac.NEIGHBORHOOD_DOWN, ac.NEIGHBORHOOD_DIST_DOWN),
+                                   (ac.NEIGHBORHOOD_LEFT, ac.NEIGHBORHOOD_DIST_LEFT),
+                                   (ac.NEIGHBORHOOD_RIGHT, ac.NEIGHBORHOOD_DIST_RIGHT)]:
+            if perception[dir_idx] == ac.SHELL and perception[dist_idx] < 5: return dir_idx
+        return None
+
+    def _dir_to_action(self, dir_idx):
+        if dir_idx == ac.NEIGHBORHOOD_UP: return ac.MOVE_UP
+        elif dir_idx == ac.NEIGHBORHOOD_DOWN: return ac.MOVE_DOWN
+        elif dir_idx == ac.NEIGHBORHOOD_LEFT: return ac.MOVE_LEFT
+        elif dir_idx == ac.NEIGHBORHOOD_RIGHT: return ac.MOVE_RIGHT
+        return ac.NO_MOVE
+
+    def _can_move(self, action, perception):
+        obj, dist = None, 999.0
+        if action == ac.MOVE_UP: obj, dist = perception[ac.NEIGHBORHOOD_UP], perception[ac.NEIGHBORHOOD_DIST_UP]
+        elif action == ac.MOVE_DOWN: obj, dist = perception[ac.NEIGHBORHOOD_DOWN], perception[ac.NEIGHBORHOOD_DIST_DOWN]
+        elif action == ac.MOVE_LEFT: obj, dist = perception[ac.NEIGHBORHOOD_LEFT], perception[ac.NEIGHBORHOOD_DIST_LEFT]
+        elif action == ac.MOVE_RIGHT: obj, dist = perception[ac.NEIGHBORHOOD_RIGHT], perception[ac.NEIGHBORHOOD_DIST_RIGHT]
+        else: return False
+
+        if obj in [ac.UNBREAKABLE, ac.BRICK, ac.COMMAND_CENTER]:
+            if dist < 0.6: return False
+        return True

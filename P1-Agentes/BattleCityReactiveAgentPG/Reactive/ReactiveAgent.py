@@ -26,6 +26,7 @@ class ReactiveAgent(BaseAgent):
     #Devuelve la acción u el disparo si o no
     def Update(self, perception, map):
         action, shot = self.stateMachine.Update(perception, map, self)
+        print(f"Estado: {self.stateMachine.curentState}, Acción: {action}, Disparo: {shot}")
         return action, shot
     
     #Metodo que se llama al finalizar el agente, se pasa el estado de terminacion
