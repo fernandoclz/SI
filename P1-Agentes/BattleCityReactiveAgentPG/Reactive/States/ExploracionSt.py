@@ -39,12 +39,10 @@ class ExploracionSt(State):
         self.last_pos = (ax, ay)
 
         # 3. LÓGICA DE NAVEGACIÓN SIMPLIFICADA
-        # Decidimos dirección ideal (la que más reduce distancia)
         pref_x = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
         pref_y = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
         order = [pref_x, pref_y] if abs(dx) > abs(dy) else [pref_y, pref_x]
         
-        # Añadimos las opuestas como último recurso para salir de callejones
         order += [self._opp(order[1]), self._opp(order[0])]
 
         chosen_move = ac.NO_MOVE
@@ -53,8 +51,20 @@ class ExploracionSt(State):
                 chosen_move = move
                 break
         
-        # 4. GESTIÓN DE LADRILLOS Y DISPARO
-        # Si el movimiento elegido nos lleva contra un ladrillo, disparamos
+        # 4. DESATASCO FORZADO (Prioridad Máxima: ¡Debe ir ANTES de disparar!)
+        if self.stuck_ticks > 4:
+            # Si nos atascamos yendo en horizontal, forzamos un paso vertical (y viceversa)
+            if chosen_move in [ac.MOVE_LEFT, ac.MOVE_RIGHT]:
+                # Buscamos un lado libre para "deslizarnos" y salir de la esquina
+                alt = ac.MOVE_UP if self._is_passable(ac.MOVE_UP, perception) else ac.MOVE_DOWN
+            else:
+                alt = ac.MOVE_RIGHT if self._is_passable(ac.MOVE_RIGHT, perception) else ac.MOVE_LEFT
+            
+            # Reseteamos los ticks para darle tiempo a moverse antes de volver a quejarse
+            self.stuck_ticks = 0 
+            return alt, False
+
+        # 5. GESTIÓN DE LADRILLOS Y DISPARO
         if chosen_move != ac.NO_MOVE:
             obj = perception[self.mapping[chosen_move]]
             dist = perception[self.dist_map[chosen_move]]
@@ -66,12 +76,6 @@ class ExploracionSt(State):
                 else:
                     # Girar hacia el ladrillo
                     return chosen_move, False
-
-        # Si estamos atascados por un muro duro (no ladrillo), forzamos cambio
-        if self.stuck_ticks > 4:
-            # Movimiento perpendicular simple para deslizar por el muro
-            alt = ac.MOVE_UP if chosen_move in [ac.MOVE_LEFT, ac.MOVE_RIGHT] else ac.MOVE_RIGHT
-            return alt, False
 
         return chosen_move, False
 
