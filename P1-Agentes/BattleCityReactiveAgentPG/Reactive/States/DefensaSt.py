@@ -4,59 +4,60 @@ from States.AgentConsts import AgentConsts as ac
 class DefensaSt(State):
     def __init__(self, name):
         super().__init__(name)
-
-    def Start(self, agent):
-        print("Estado Defensa iniciado")
+        # Diccionario para traducir dónde detectamos la bala a qué acción realizar
+        self.react = {
+            ac.NEIGHBORHOOD_UP:    ac.MOVE_UP,
+            ac.NEIGHBORHOOD_DOWN:  ac.MOVE_DOWN,
+            ac.NEIGHBORHOOD_LEFT:  ac.MOVE_LEFT,
+            ac.NEIGHBORHOOD_RIGHT: ac.MOVE_RIGHT
+        }
 
     def Update(self, perception, map, agent):
-        bala_dir = self._bala_entrante(perception)
-        if bala_dir is None:
-            return ac.NO_MOVE, False
+        # Valores por defecto: quietos y sin disparar
+        action = ac.NO_MOVE
+        shoot = False
 
-        if perception[ac.CAN_FIRE] == 1:
-            action = self._dir_to_action(bala_dir)
-            if perception[ac.ORIENTATION] == action:
-                return action, True
-            else:
-                return action, False
-        else:
-            if bala_dir in [ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DOWN]:
-                if self._can_move(ac.MOVE_LEFT, perception): return ac.MOVE_LEFT, False
-                elif self._can_move(ac.MOVE_RIGHT, perception): return ac.MOVE_RIGHT, False
-            else:
-                if self._can_move(ac.MOVE_UP, perception): return ac.MOVE_UP, False
-                elif self._can_move(ac.MOVE_DOWN, perception): return ac.MOVE_DOWN, False
-            
-            return ac.NO_MOVE, False
+        # 1. DETECTAR BALA PELIGROSA
+        for dir_idx, dist_idx in [(ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DIST_UP), (ac.NEIGHBORHOOD_DOWN, ac.NEIGHBORHOOD_DIST_DOWN),
+                                  (ac.NEIGHBORHOOD_LEFT, ac.NEIGHBORHOOD_DIST_LEFT), (ac.NEIGHBORHOOD_RIGHT, ac.NEIGHBORHOOD_DIST_RIGHT)]:
+            print("Ataque ha detectado la bala a menos de 5")
+            if perception[dir_idx] == ac.SHELL:
+                print("Defensa detecta la bala")
+                # Dirección para encarar la amenaza
+                face_bullet_dir = self.react[dir_idx]
+                
+                # 2. DEFENSA OFENSIVA: Si tenemos munición, disparamos HACIA la bala
+                if perception[ac.CAN_FIRE] == 1.0:
+                    action = ac.NO_MOVE
+                    shoot = True
+                    return action, shoot  # Ejecutamos disparo y salimos
+                print("No tiene bala")
+                # 3. ESQUIVA: Si no podemos disparar, esquivamos lateralmente
+                perp_moves = [ac.MOVE_LEFT, ac.MOVE_RIGHT] if face_bullet_dir in [ac.MOVE_UP, ac.MOVE_DOWN] else [ac.MOVE_UP, ac.MOVE_DOWN]
+                
+                for escape in perp_moves:
+                    if self._can_move(escape, perception):
+                        action = escape
+                        shoot = False
+                        return action, shoot  # Ejecutamos huida y salimos
+                
+        # Si llegamos aquí, es que no hay peligro o estamos totalmente acorralados
+        return action, shoot
 
     def Transit(self, perception, map):
-        if self._bala_entrante(perception) is None:
-            return "Exploracion"
-        return self.id
-
-    def _bala_entrante(self, perception):
-        for dir_idx, dist_idx in [(ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DIST_UP),
-                                   (ac.NEIGHBORHOOD_DOWN, ac.NEIGHBORHOOD_DIST_DOWN),
-                                   (ac.NEIGHBORHOOD_LEFT, ac.NEIGHBORHOOD_DIST_LEFT),
-                                   (ac.NEIGHBORHOOD_RIGHT, ac.NEIGHBORHOOD_DIST_RIGHT)]:
-            if perception[dir_idx] == ac.SHELL and perception[dist_idx] < 5: return dir_idx
-        return None
-
-    def _dir_to_action(self, dir_idx):
-        if dir_idx == ac.NEIGHBORHOOD_UP: return ac.MOVE_UP
-        elif dir_idx == ac.NEIGHBORHOOD_DOWN: return ac.MOVE_DOWN
-        elif dir_idx == ac.NEIGHBORHOOD_LEFT: return ac.MOVE_LEFT
-        elif dir_idx == ac.NEIGHBORHOOD_RIGHT: return ac.MOVE_RIGHT
-        return ac.NO_MOVE
+        # Si no hay balas cerca, volvemos a explorar
+        for dir_idx, dist_idx in [(ac.NEIGHBORHOOD_UP, ac.NEIGHBORHOOD_DIST_UP), (ac.NEIGHBORHOOD_DOWN, ac.NEIGHBORHOOD_DIST_DOWN),
+                                  (ac.NEIGHBORHOOD_LEFT, ac.NEIGHBORHOOD_DIST_LEFT), (ac.NEIGHBORHOOD_RIGHT, ac.NEIGHBORHOOD_DIST_RIGHT)]:
+            if perception[dir_idx] == ac.SHELL and perception[dist_idx] < 5.0: return self.id
+        return "Exploracion"
 
     def _can_move(self, action, perception):
-        obj, dist = None, 999.0
-        if action == ac.MOVE_UP: obj, dist = perception[ac.NEIGHBORHOOD_UP], perception[ac.NEIGHBORHOOD_DIST_UP]
-        elif action == ac.MOVE_DOWN: obj, dist = perception[ac.NEIGHBORHOOD_DOWN], perception[ac.NEIGHBORHOOD_DIST_DOWN]
-        elif action == ac.MOVE_LEFT: obj, dist = perception[ac.NEIGHBORHOOD_LEFT], perception[ac.NEIGHBORHOOD_DIST_LEFT]
-        elif action == ac.MOVE_RIGHT: obj, dist = perception[ac.NEIGHBORHOOD_RIGHT], perception[ac.NEIGHBORHOOD_DIST_RIGHT]
-        else: return False
-
-        if obj in [ac.UNBREAKABLE, ac.BRICK, ac.COMMAND_CENTER]:
-            if dist < 0.6: return False
-        return True
+        # Simplificación de colisiones (solo muros duros a menos de 0.6)
+        # Usamos los mismos índices de neighborhood para ahorrar código
+        idx = {ac.MOVE_UP: ac.NEIGHBORHOOD_UP, ac.MOVE_DOWN: ac.NEIGHBORHOOD_DOWN,
+               ac.MOVE_LEFT: ac.NEIGHBORHOOD_LEFT, ac.MOVE_RIGHT: ac.NEIGHBORHOOD_RIGHT}[action]
+        dist_idx = {ac.MOVE_UP: ac.NEIGHBORHOOD_DIST_UP, ac.MOVE_DOWN: ac.NEIGHBORHOOD_DIST_DOWN,
+                    ac.MOVE_LEFT: ac.NEIGHBORHOOD_DIST_LEFT, ac.MOVE_RIGHT: ac.NEIGHBORHOOD_DIST_RIGHT}[action]
+        
+        return not (perception[idx] in [ac.UNBREAKABLE, ac.BRICK] and perception[dist_idx] < 0.6)
+    
