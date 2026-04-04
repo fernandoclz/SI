@@ -31,15 +31,22 @@ class BCProblem(Problem):
 
     #Calcula la heuristica del nodo en base al problema planteado (Se necesita reimplementar)
     def Heuristic(self, node):
-        #TODO: heurística del nodo
-        print("Aqui falta ncosas por hacer :) ")
-        return 0
+        goal = self.getGoal()
+        if goal is None: return 0
+        return abd(node.x - goal.x) + abs(node.y - goal.y)
 
     #Genera la lista de sucesores del nodo (Se necesita reimplementar)
     def GetSucessors(self, node):
         successors = []
-        #TODO: sucesores de un nodo dado
-        print("Aqui falta ncosas por hacer :) ")
+        directions = [(0,-1),(0,1),(-1,0),(1,0)]
+
+        for dx, dy in directions
+            nx, ny = node.x + dx, node.y + dy
+            if self.IsValid(nx, ny)
+                cost = self.GetCost(self.GetValue(nx,ny))
+                if cost < sys.maxsize:
+                    nuevo_nodo = BCNode(nx,ny)
+                    successors.append(nuevo_nodo)
         return successors
     
     #métodos estáticos
@@ -92,9 +99,15 @@ class BCProblem(Problem):
     #crea un nodo y lo añade a successors (lista) con el padre indicado y la posición x,y en coordenadas mapa 
     @staticmethod
     def GetCost(value):
-        #TODO: debes darle un coste a cada tipo de casilla del mapa.
-        print("Aqui falta ncosas por hacer :) ")
-        return sys.maxsize
+        #Nothing = 0, 1 = UNBREAKABLE, 2 = Brick, 3 = commandCenter
+        if value == 0:
+            return 1
+        elif value == 2: 
+            return 3
+        elif value == 3:
+            return 1
+        else:
+            return sys.maxsize
     
     def CreateNode(self,successors,parent,x,y):
         value=self.map[x][y]
