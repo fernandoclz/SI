@@ -24,5 +24,5 @@ class StateMachine(State):
     
 
     #Metodo que se llama al finalizar la máquina de estado
-    #def End(self, win):
-        #super().End(win)
+    def End(self, win):
+        super().End(win)

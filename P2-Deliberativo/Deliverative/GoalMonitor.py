@@ -21,15 +21,33 @@ class GoalMonitor:
         if self.recalculate:
             self.lastTime = perception[AgentConsts.TIME]
             return True
-        #TODO definir la estrategia de cuando queremos recalcular
+        #Definir la estrategia de cuando queremos recalcular
         #puede ser , por ejemplo cada cierto tiempo o cuanod tenemos poca vida.
+        if tiempo_actual - self.lastTime > 20:
+            self.lastTime = tiempo_actual
+            return True
+        if (perception[AgentConsts.HEALTH] <= 1) or (not agent.current_plan):
+            return True
         return False
+
     
     #selecciona la meta mas adecuada al estado actual
     def SelectGoal(self, perception, map, agent):
-        #TODO definir la estrategia del cambio de meta
-        print("TODO aqui faltan cosas :)")
-        return self.goals[random.randint(0,len(self.goals))]
-    
+        if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
+            for goal in self.goals:
+                if goal.name == "LifeGoal": # Suponiendo que le asignaste nombres a tus goals
+                    return goal
+                    
+        if perception[ac.PLAYER_X] >= 0:
+            for goal in self.goals:
+                if goal.name == "PlayerGoal":
+                    return goal
+
+        for goal in self.goals:
+            if goal.name == "CommandCenterGoal":
+                return goal
+                
+        return self.goals[0]
+
     def UpdateGoals(self,goal, goalId):
         self.goals[goalId] = goal

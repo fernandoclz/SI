@@ -6,8 +6,9 @@ from AStar.AStar import AStar
 from MyProblem.BCNode import BCNode
 from MyProblem.BCProblem import BCProblem
 from States.AgentConsts import AgentConsts
-from States.Attack import Attack
-from States.RandomMovement import RandomMovement
+from States.AtaqueSt import AtaqueSt
+from States.DefensaSt import DefensaSt
+from States.HuidaSt import HuidaSt
 
 class GoalOrientedAgent(BaseAgent):
 
@@ -17,8 +18,9 @@ class GoalOrientedAgent(BaseAgent):
         super().__init__(id, name)
         dictionary = {
         "ExecutePlan" : ExecutePlan("ExecutePlan"),
-        "Attack" : Attack("Attack"),
-        "RandomMovement" : RandomMovement("RandomMovement")
+        "Ataque" : AtaqueSt("Ataque"),
+        "Defensa" : DefensaSt("Defensa"),
+        "Huida" : HuidaSt("Huida")
         }
         
         self.stateMachine = StateMachine("GoalOrientedBehavior",dictionary,"ExecutePlan")
@@ -60,12 +62,16 @@ class GoalOrientedAgent(BaseAgent):
     def _CreatePlan(self,perception,map):
         #currentGoal = self.problem.GetGoal()
         if self.goalMonitor != None:
-            #TODO creamos un plan, pasos:
+            #Creamos un plan, pasos:
             #-con gualMonito, seleccionamos la meta actual (Que será la mas propicia => definir la estrategia a seguir).
             #-le damos el modo inicial _CreateInitialNode
             #-establecer la meta actual al problema para que A* sepa cual es.
             #-Calcular el plan usando A*
-            print("TODO aqui faltan cosas :)")
+            currentGoal = self.goalMonitor.SelectGoal(perception, map, self)
+            self.problem.SetGoal(currentGoal)
+            ag_x, ag_y = int(perception[ac.AGENT_X]), int(perception[ac.AGENT_Y])
+            initial_node = BCNode(ag_x, ag_y)
+            self.problem.SetInitial(initial_node)
         return self.aStar.GetPlan()
         
     @staticmethod
@@ -94,14 +100,15 @@ class GoalOrientedAgent(BaseAgent):
     #no podemos iniciarlo en el start porque no conocemos el mapa ni las posiciones de los objetos
     def InitAgent(self,perception,map):
         #creamos el problema
-        #creamos el problema
-        #TODO inicializamos:
+        # inicializamos:
         # - creamos el problema con BCProblem
         # - inicializamos el mapa problem.InitMap
         # - inicializamos A*
         # - creamos un plan inicial
-        print("TODO aqui faltan cosas :)")
-        goal1CommanCenter = None
+        self.problem = BCProblem()
+        self.problem.InitMap(map)
+        self.aStar = aStar(self.problem)
+        goal1CommanCenter = self.CreateCommandCenterGoal(perception)
         goal2Life = self._CreateLifeGoal(perception)
         goal3Player = self._CreatePlayerGoal(perception)
         exitGoal = self._CreateExitGoal(perception)
