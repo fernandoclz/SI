@@ -10,118 +10,173 @@ from States.AtaqueSt import AtaqueSt
 from States.DefensaSt import DefensaSt
 from States.HuidaSt import HuidaSt
 
+
 class GoalOrientedAgent(BaseAgent):
 
-
+    # Dimensiones del mapa en coordenadas de mapa (no de mundo)
+    MAP_X_SIZE = 15
+    MAP_Y_SIZE = 15
 
     def __init__(self, id, name):
         super().__init__(id, name)
         dictionary = {
-        "ExecutePlan" : ExecutePlan("ExecutePlan"),
-        "Ataque" : AtaqueSt("Ataque"),
-        "Defensa" : DefensaSt("Defensa"),
-        "Huida" : HuidaSt("Huida")
+            "ExecutePlan": ExecutePlan("ExecutePlan"),
+            "Ataque":      AtaqueSt("Ataque"),
+            "Defensa":     DefensaSt("Defensa"),
+            "Huida":       HuidaSt("Huida"),
         }
-        
-        self.stateMachine = StateMachine("GoalOrientedBehavior",dictionary,"ExecutePlan")
-        self.problem = None
-        self.aStar = None
-        self.plan = None
+        self.stateMachine = StateMachine("GoalOrientedBehavior", dictionary, "ExecutePlan")
+        self.problem     = None
+        self.aStar       = None
+        self.plan        = None
         self.goalMonitor = None
-        self.agentInit = False
+        self.agentInit   = False
 
-    #Metodo que se llama al iniciar el agente. No devuelve nada y sirve para contruir el agente
     def Start(self):
-        print("Inicio del agente ")
+        print("Inicio del agente GoalOriented")
         self.stateMachine.Start(self)
-        self.problem = None
-        self.aStar = None
-        self.plan = None
+        self.problem     = None
+        self.aStar       = None
+        self.plan        = None
         self.goalMonitor = None
-        self.agentInit = False
+        self.agentInit   = False
 
-    #Metodo que se llama en cada actualización del agente, y se proporciona el vector de percepciones
-    #Devuelve la acción o el disparo si o no
     def Update(self, perception, map):
-        if perception == True or perception == False:
-            return 0,True
+        # Guardia para percepciones booleanas que llegan al inicio
+        if perception is True or perception is False:
+            return 0, True
+
+        # Inicializacion diferida: necesitamos el mapa y las posiciones reales
         if not self.agentInit:
-            self.InitAgent(perception,map)
+            self.InitAgent(perception, map)
             self.agentInit = True
 
         action, shot = self.stateMachine.Update(perception, map, self)
 
-        #Actualizamos el plan
+        # Actualizamos el goal del jugador en tiempo real (elemento dinamico)
         goal3Player = self._CreatePlayerGoal(perception)
-        self.goalMonitor.UpdateGoals(goal3Player,2)
-        if self.goalMonitor.NeedReplaning(perception,map,self):
-            self.problem.InitMap(map) ## refrescamos el mapa
-            self.plan=self._CreatePlan(perception, map)
+        self.goalMonitor.UpdateGoals(goal3Player, GoalMonitor.GOAL_PLAYER)
+
+        # Replanificamos si el GoalMonitor lo considera necesario
+        if self.goalMonitor.NeedReplaning(perception, map, self):
+            self.problem.InitMap(map)
+            self.plan = self._CreatePlan(perception, map)
+
         return action, shot
-    
-    def _CreatePlan(self,perception,map):
-        #currentGoal = self.problem.GetGoal()
-        if self.goalMonitor != None:
-            #Creamos un plan, pasos:
-            #-con gualMonito, seleccionamos la meta actual (Que será la mas propicia => definir la estrategia a seguir).
-            #-le damos el modo inicial _CreateInitialNode
-            #-establecer la meta actual al problema para que A* sepa cual es.
-            #-Calcular el plan usando A*
+
+    def _CreatePlan(self, perception, map):
+        if self.goalMonitor is not None:
+            # 1. Seleccionamos la meta mas apropiada segun la estrategia
             currentGoal = self.goalMonitor.SelectGoal(perception, map, self)
-            self.problem.SetGoal(currentGoal)
-            ag_x, ag_y = int(perception[ac.AGENT_X]), int(perception[ac.AGENT_Y])
-            initial_node = BCNode(ag_x, ag_y)
+
+            # 2. Nodo inicial: posicion actual del agente en coordenadas mapa
+            initial_node = self._CreateInitialNode(perception)
             self.problem.SetInitial(initial_node)
+
+            # 3. Comunicamos la meta al problema para que A* la use
+            self.problem.SetGoal(currentGoal)
+
+        # 4. Ejecutamos A* y devolvemos el plan
         return self.aStar.GetPlan()
-        
+
+    # ------------------------------------------------------------------ #
+    # Helpers para crear nodos desde la percepcion                         #
+    # ------------------------------------------------------------------ #
+
     @staticmethod
-    def CreateNodeByPerception(perception, value, perceptionID_X, perceptionID_Y,ySize):
-        xMap, yMap = BCProblem.WorldToMapCoord(perception[perceptionID_X],perception[perceptionID_Y],ySize)
-        newNode = BCNode(None,BCProblem.GetCost(value),value,xMap,yMap)
+    def CreateNodeByPerception(perception, value, perceptionID_X, perceptionID_Y, ySize):
+        xMap, yMap = BCProblem.WorldToMapCoord(
+            perception[perceptionID_X],
+            perception[perceptionID_Y],
+            ySize
+        )
+        newNode = BCNode(None, BCProblem.GetCost(value), value, xMap, yMap)
         return newNode
 
-    def _CreatePlayerGoal(self, perception):
-        return GoalOrientedAgent.CreateNodeByPerception(perception,AgentConsts.PLAYER,AgentConsts.PLAYER_X,AgentConsts.PLAYER_Y,15)
-
-    def _CreateExitGoal(self,perception):
-        return GoalOrientedAgent.CreateNodeByPerception(perception,AgentConsts.EXIT,AgentConsts.EXIT_X,AgentConsts.EXIT_Y,15)
-    
-    def _CreateLifeGoal(self, perception):
-        return GoalOrientedAgent.CreateNodeByPerception(perception,AgentConsts.LIFE,AgentConsts.LIFE_X,AgentConsts.LIFE_Y,15)
-    
     def _CreateInitialNode(self, perception):
-        node = GoalOrientedAgent.CreateNodeByPerception(perception,AgentConsts.NOTHING,AgentConsts.AGENT_X,AgentConsts.AGENT_Y,15)
+        node = GoalOrientedAgent.CreateNodeByPerception(
+            perception, AgentConsts.NOTHING,
+            AgentConsts.AGENT_X, AgentConsts.AGENT_Y,
+            self.MAP_Y_SIZE
+        )
         node.SetG(0)
         return node
-    
+
     def _CreateDefaultGoal(self, perception):
-        return GoalOrientedAgent.CreateNodeByPerception(perception,AgentConsts.COMMAND_CENTER,AgentConsts.COMMAND_CENTER_X,AgentConsts.COMMAND_CENTER_Y,15)
-    
-    #no podemos iniciarlo en el start porque no conocemos el mapa ni las posiciones de los objetos
-    def InitAgent(self,perception,map):
-        #creamos el problema
-        # inicializamos:
-        # - creamos el problema con BCProblem
-        # - inicializamos el mapa problem.InitMap
-        # - inicializamos A*
-        # - creamos un plan inicial
-        self.problem = BCProblem()
+        return GoalOrientedAgent.CreateNodeByPerception(
+            perception, AgentConsts.COMMAND_CENTER,
+            AgentConsts.COMMAND_CENTER_X, AgentConsts.COMMAND_CENTER_Y,
+            self.MAP_Y_SIZE
+        )
+
+    def _CreateLifeGoal(self, perception):
+        return GoalOrientedAgent.CreateNodeByPerception(
+            perception, AgentConsts.LIFE,
+            AgentConsts.LIFE_X, AgentConsts.LIFE_Y,
+            self.MAP_Y_SIZE
+        )
+
+    def _CreatePlayerGoal(self, perception):
+        return GoalOrientedAgent.CreateNodeByPerception(
+            perception, AgentConsts.PLAYER,
+            AgentConsts.PLAYER_X, AgentConsts.PLAYER_Y,
+            self.MAP_Y_SIZE
+        )
+
+    def _CreateExitGoal(self, perception):
+        return GoalOrientedAgent.CreateNodeByPerception(
+            perception, AgentConsts.EXIT,
+            AgentConsts.EXIT_X, AgentConsts.EXIT_Y,
+            self.MAP_Y_SIZE
+        )
+
+    # ------------------------------------------------------------------ #
+    # Inicializacion diferida (requiere mapa y percepciones reales)        #
+    # ------------------------------------------------------------------ #
+
+    def InitAgent(self, perception, map):
+        initial_node       = self._CreateInitialNode(perception)
+        goal1CommandCenter = self._CreateDefaultGoal(perception)
+
+        # Creamos el problema con las dimensiones del mapa
+        self.problem = BCProblem(
+            initial_node,
+            goal1CommandCenter,
+            self.MAP_X_SIZE,
+            self.MAP_Y_SIZE
+        )
         self.problem.InitMap(map)
-        self.aStar = aStar(self.problem)
-        goal1CommanCenter = self.CreateCommandCenterGoal(perception)
-        goal2Life = self._CreateLifeGoal(perception)
+
+        # Inicializamos A*
+        self.aStar = AStar(self.problem)
+
+        # Creamos los goals disponibles
+        goal2Life   = self._CreateLifeGoal(perception)
         goal3Player = self._CreatePlayerGoal(perception)
-        exitGoal = self._CreateExitGoal(perception)
-        self.goalMonitor = GoalMonitor(self.problem,[goal1CommanCenter,goal2Life,goal3Player],exitGoal)
+        exitGoal    = self._CreateExitGoal(perception)
+
+        # GoalMonitor gestiona que meta perseguir y cuando replanificar
+        self.goalMonitor = GoalMonitor(
+            self.problem,
+            [goal1CommandCenter, goal2Life, goal3Player],
+            exitGoal
+        )
+
+        # Plan inicial
+        self.plan = self._CreatePlan(perception, map)
+
+    # ------------------------------------------------------------------ #
+    # Utilidades                                                           #
+    # ------------------------------------------------------------------ #
 
     @staticmethod
     def ShowPlan(plan):
         for n in plan:
-            print("X: ",n.x,"Y:",n.y,"[",n.value,"]{",n.G(),"} => ")
+            print("X:", n.x, "Y:", n.y, "[", n.value, "]{", n.G(), "} =>")
 
     def GetPlan(self):
         return self.plan
-    #Metodo que se llama al finalizar el agente, se pasa el estado de terminacion
+
     def End(self, win):
         super().End(win)
         self.stateMachine.End()

@@ -66,7 +66,7 @@ class HuidaSt(State):
             
             # Si el camino directo a la vida tiene un ladrillo, lo volamos
             if obj in [ac.BRICK, ac.SEMI_BREKABLE] and dist < 1.2:
-                if perception[ac.ORIENTATION] == chosen_move:
+                if perception[ac.TANK_ORIENTATION] == chosen_move:
                     shoot = True
                     if dist < 0.6: 
                         chosen_move = ac.NO_MOVE # Parar para no chocar mientras disparamos
@@ -85,7 +85,7 @@ class HuidaSt(State):
     # ------------------------------------------------------------------ #
     def Transit(self, perception, map):
         if perception[ac.LIFE_X] < 0 or perception[ac.HEALTH] > 1:
-            return "Exploracion"
+            return "ExecutePlan"
         if self._bala_entrante(perception):
             return "Defensa"
         return self.id

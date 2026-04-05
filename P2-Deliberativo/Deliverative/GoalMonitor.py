@@ -1,15 +1,18 @@
-import random
 from States.AgentConsts import AgentConsts
+
 
 class GoalMonitor:
 
-    GOAL_COMMAND_CENTRER = 0
+    GOAL_COMMAND_CENTER = 0
     GOAL_LIFE = 1
     GOAL_PLAYER = 2
-    GOAL_EXIT = 3
+
+    # Distancia Manhattan en coordenadas mapa a partir de la cual perseguimos al jugador
+    PLAYER_CHASE_DISTANCE = 5
+
     def __init__(self, problem, goals, finalGoal):
-        self.goals = goals
-        self.finalGoal = finalGoal
+        self.goals = goals          # [commandCenter, life, player]
+        self.finalGoal = finalGoal  # meta final (salida)
         self.problem = problem
         self.lastTime = -1
         self.recalculate = False
@@ -18,36 +21,61 @@ class GoalMonitor:
         self.recalculate = True
 
     def NeedReplaning(self, perception, map, agent):
+        tiempo_actual = perception[AgentConsts.TIME]
+
         if self.recalculate:
-            self.lastTime = perception[AgentConsts.TIME]
+            self.recalculate = False
+            self.lastTime = tiempo_actual
             return True
-        #Definir la estrategia de cuando queremos recalcular
-        #puede ser , por ejemplo cada cierto tiempo o cuanod tenemos poca vida.
+
         if tiempo_actual - self.lastTime > 20:
             self.lastTime = tiempo_actual
             return True
-        if (perception[AgentConsts.HEALTH] <= 1) or (not agent.current_plan):
+
+        if perception[AgentConsts.HEALTH] <= 1:
+            self.lastTime = tiempo_actual
             return True
+
+        if not agent.plan:
+            self.lastTime = tiempo_actual
+            return True
+
         return False
 
-    
-    #selecciona la meta mas adecuada al estado actual
     def SelectGoal(self, perception, map, agent):
-        if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
-            for goal in self.goals:
-                if goal.name == "LifeGoal": # Suponiendo que le asignaste nombres a tus goals
-                    return goal
-                    
-        if perception[ac.PLAYER_X] >= 0:
-            for goal in self.goals:
-                if goal.name == "PlayerGoal":
-                    return goal
+        # 1. Vida baja y power-up disponible: prioridad máxima
+        if (perception[AgentConsts.HEALTH] <= 1 and
+                perception[AgentConsts.LIFE_X] >= 0 and
+                self.goals[self.GOAL_LIFE] is not None):
+            return self.goals[self.GOAL_LIFE]
 
+        # 2. Jugador cerca (distancia Manhattan en coords mapa): perseguir
+        if self.goals[self.GOAL_PLAYER] is not None and perception[AgentConsts.PLAYER_X] >= 0:
+            from MyProblem.BCProblem import BCProblem
+            ax, ay = BCProblem.WorldToMapCoord(
+                perception[AgentConsts.AGENT_X],
+                perception[AgentConsts.AGENT_Y],
+                self.problem.ySize
+            )
+            px, py = BCProblem.WorldToMapCoord(
+                perception[AgentConsts.PLAYER_X],
+                perception[AgentConsts.PLAYER_Y],
+                self.problem.ySize
+            )
+            dist = abs(ax - px) + abs(ay - py)
+            if dist <= self.PLAYER_CHASE_DISTANCE:
+                return self.goals[self.GOAL_PLAYER]
+
+        # 3. Objetivo principal: CommandCenter
+        if self.goals[self.GOAL_COMMAND_CENTER] is not None:
+            return self.goals[self.GOAL_COMMAND_CENTER]
+
+        # 4. Fallback
         for goal in self.goals:
-            if goal.name == "CommandCenterGoal":
+            if goal is not None:
                 return goal
-                
-        return self.goals[0]
 
-    def UpdateGoals(self,goal, goalId):
+        return self.finalGoal
+
+    def UpdateGoals(self, goal, goalId):
         self.goals[goalId] = goal

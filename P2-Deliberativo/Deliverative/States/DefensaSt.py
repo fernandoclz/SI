@@ -25,7 +25,7 @@ class DefensaSt(State):
 
             # 2. DEFENSA OFENSIVA: Siempre intentar disparar si podemos
             if perception[ac.CAN_FIRE] == 1.0:
-                if perception[ac.ORIENTATION] == face_dir:
+                if perception[ac.TANK_ORIENTATION] == face_dir:
                     return ac.NO_MOVE, True  # ¡Fuego!
                 else:
                     return face_dir, False   # Girar para encarar
@@ -39,7 +39,7 @@ class DefensaSt(State):
     def Transit(self, perception, map):
         # Si no hay proyectiles a la vista en rango de peligro, volvemos
         if not self._get_nearest_shell(perception):
-            return "Exploracion"
+            return "ExecutePlan"
         return self.id
 
     def _get_nearest_shell(self, perception):

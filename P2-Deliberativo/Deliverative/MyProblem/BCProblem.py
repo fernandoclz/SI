@@ -1,5 +1,3 @@
-#import sys
-#sys.path.insert(1, '../AStar')
 from AStar.Problem import Problem
 from MyProblem.BCNode import BCNode
 from States.AgentConsts import AgentConsts
@@ -8,112 +6,115 @@ import numpy as np
 
 
 class BCProblem(Problem):
-    
 
     def __init__(self, initial, goal, xSize, ySize):
         super().__init__(initial, goal)
-        self.map = np.zeros((xSize,ySize),dtype=int)
+        self.map = np.zeros((xSize, ySize), dtype=int)
         self.xSize = xSize
         self.ySize = ySize
-    
-    def InitMap(self,m):
+
+    def InitMap(self, m):
         for i in range(len(m)):
-            x,y = BCProblem.Vector2MatrixCoord(i,self.xSize,self.ySize)
+            x, y = BCProblem.Vector2MatrixCoord(i, self.xSize, self.ySize)
             self.map[x][y] = m[i]
-    
-    #Muestra el mapa por consola
+
+    # Muestra el mapa por consola
     def ShowMap(self):
         for j in range(self.ySize):
             s = ""
             for i in range(self.xSize):
-                s += ("[" + str(i) + "," + str(j) + "," + str(self.map[i][j]) +"]")
+                s += ("[" + str(i) + "," + str(j) + "," + str(self.map[i][j]) + "]")
             print(s)
 
-    #Calcula la heuristica del nodo en base al problema planteado (Se necesita reimplementar)
+    # Heurística: distancia Manhattan hasta la meta
     def Heuristic(self, node):
         goal = self.getGoal()
-        if goal is None: return 0
-        return abd(node.x - goal.x) + abs(node.y - goal.y)
+        if goal is None:
+            return 0
+        return abs(node.x - goal.x) + abs(node.y - goal.y)
 
-    #Genera la lista de sucesores del nodo (Se necesita reimplementar)
+    # Genera la lista de sucesores del nodo dado (4-conectividad: arriba/abajo/izq/der)
     def GetSucessors(self, node):
         successors = []
-        directions = [(0,-1),(0,1),(-1,0),(1,0)]
+        directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]
 
-        for dx, dy in directions
+        for dx, dy in directions:
             nx, ny = node.x + dx, node.y + dy
-            if self.IsValid(nx, ny)
-                cost = self.GetCost(self.GetValue(nx,ny))
+            # Comprobamos que la casilla está dentro de los límites del mapa
+            if 0 <= nx < self.xSize and 0 <= ny < self.ySize:
+                value = self.map[nx][ny]
+                cost = BCProblem.GetCost(value)
+                # Solo añadimos si el coste no es infinito (casilla transitable o rompible)
                 if cost < sys.maxsize:
-                    nuevo_nodo = BCNode(nx,ny)
+                    nuevo_nodo = BCNode(None, cost, value, nx, ny)
                     successors.append(nuevo_nodo)
         return successors
-    
-    #métodos estáticos
-    #nos dice si podemos movernos hacia una casilla, se debe poner el valor de la casilla como
-    #parámetro
+
+    # ------------------------------------------------------------------ #
+    # Métodos estáticos                                                    #
+    # ------------------------------------------------------------------ #
+
     @staticmethod
     def CanMove(value):
-        return value != AgentConsts.UNBREAKABLE and value != AgentConsts.SEMI_UNBREKABLE and value != AgentConsts.SEMI_UNBREKABLE
-    
-    #convierte coordenadas mapa en formato vector a matriz
-    @staticmethod
-    def Vector2MatrixCoord(pos,xSize,ySize):
-        x = pos % xSize
-        y = pos // ySize #division entera
-        return x,y
+        return (value != AgentConsts.UNBREAKABLE and
+                value != AgentConsts.SEMI_UNBREKABLE)
 
-    #convierte coordenadas mapa en formato matriz a vector
+    # Convierte posición en formato vector a coordenadas (x, y) de la matriz
     @staticmethod
-    def Matrix2VectorCoord(x,y,xSize):
+    def Vector2MatrixCoord(pos, xSize, ySize):
+        x = pos % xSize
+        y = pos // xSize  # división entera por xSize (número de columnas)
+        return x, y
+
+    # Convierte coordenadas (x, y) de la matriz a posición en formato vector
+    @staticmethod
+    def Matrix2VectorCoord(x, y, xSize):
         return y * xSize + x
-    
-    #convierte coordenadas del entorno (World) en coordenadas mapa (nótese que la Y está invertida)
+
+    # Coordenadas mapa -> coordenadas mundo (la Y está invertida en el motor)
     @staticmethod
-    def MapToWorldCoord(x,y,ySize):
+    def MapToWorldCoord(x, y, ySize):
         xW = x * 2
         yW = (ySize - y - 1) * 2
         return xW, yW
-    
-    #convierte coordenadas del entorno (World) en coordenadas mapa (nótese que la Y está invertida)
+
+    # Coordenadas mundo -> coordenadas mapa (la Y está invertida en el motor)
     @staticmethod
-    def WorldToMapCoord(xW,yW,ySize):
-        x = xW // 2
-        y = yW // 2
+    def WorldToMapCoord(xW, yW, ySize):
+        x = int(xW) // 2
+        y = int(yW) // 2
         y = ySize - y - 1
         return x, y
-    
-    #versión real del método anterior, que nos ayuda a buscar los centros de las celdas.
-    #aqui nos dirá los decimales, es decir como de cerca estamos de la esquina superior derecha
-    #un valor de 1.9,1.9 nos dice que estamos en la casilla 1,1 muy cerca de la 2,2
-    #en realidad, lo que buscamos es el punto medio de la casilla, es decir la 1.5, 1.5 en el caso
-    #de la casilla 1,1
+
+    # Versión flotante para buscar los centros de las celdas con precisión
     @staticmethod
-    def WorldToMapCoordFloat(xW,yW,ySize):
+    def WorldToMapCoordFloat(xW, yW, ySize):
         x = xW / 2
-        invY = (ySize*2) - yW
+        invY = (ySize * 2) - yW
         invY = invY / 2
-        #invY = invY - 1
         return x, invY
 
-    #crea un nodo y lo añade a successors (lista) con el padre indicado y la posición x,y en coordenadas mapa 
+    # Coste de paso según el tipo de casilla del mapa
     @staticmethod
     def GetCost(value):
-        #Nothing = 0, 1 = UNBREAKABLE, 2 = Brick, 3 = commandCenter
-        if value == 0 or value == 3:
+        # Casillas transitables sin coste extra
+        if value == AgentConsts.NOTHING or value == AgentConsts.COMMAND_CENTER:
             return 1
-        elif value == 2 or value == 8: 
+        # Casillas rompibles: tienen coste mayor (hay que disparar para pasar)
+        elif value == AgentConsts.BRICK or value == AgentConsts.SEMI_BREKABLE:
             return 3
+        # Muros irrompibles: coste infinito, no se pueden atravesar
         else:
             return sys.maxsize
-    
-    def CreateNode(self,successors,parent,x,y):
-        value=self.map[x][y]
-        g=BCProblem.GetCost(value)
-        rightNode = BCNode(parent,g,value,x,y)
+
+    # Crea un nodo y lo añade a successors con el padre indicado
+    def CreateNode(self, successors, parent, x, y):
+        value = self.map[x][y]
+        g = BCProblem.GetCost(value)
+        rightNode = BCNode(parent, g, value, x, y)
         rightNode.SetH(self.Heuristic(rightNode))
         successors.append(rightNode)
 
-    #Calcula el coste de ir del nodo from al nodo to (Se necesita reimplementar)
+    # Coste de moverse al nodo destino (g-cost del paso)
     def GetGCost(self, nodeTo):
         return BCProblem.GetCost(nodeTo.value)
