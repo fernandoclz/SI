@@ -37,10 +37,16 @@ class DefensaSt(State):
         return action, shoot
 
     def Transit(self, perception, map):
-        # Si no hay proyectiles a la vista en rango de peligro, volvemos
-        if not self._get_nearest_shell(perception):
-            return "ExecutePlan"
-        return self.id
+        from States.AgentConsts import AgentConsts as ac # Asegúrate de importar las constantes si no están
+
+        threat = self._get_nearest_shell(perception)
+        if threat:
+            return self.id 
+
+        if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
+            return "Huida"
+
+        return "ExecutePlan"
 
     def _get_nearest_shell(self, perception):
         closest_dist = 5.0

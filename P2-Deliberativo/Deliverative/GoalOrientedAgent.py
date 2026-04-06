@@ -77,7 +77,11 @@ class GoalOrientedAgent(BaseAgent):
             self.problem.SetGoal(currentGoal)
 
         # 4. Ejecutamos A* y devolvemos el plan
-        return self.aStar.GetPlan()
+        plan = self.aStar.GetPlan()
+        # Eliminamos el nodo inicial del plan (es donde ya estamos)
+        if len(plan) > 1:
+            plan.pop(0)
+        return plan
 
     # ------------------------------------------------------------------ #
     # Helpers para crear nodos desde la percepcion                         #

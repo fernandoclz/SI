@@ -1,6 +1,9 @@
 from StateMachine.State import State
 from States.AgentConsts import AgentConsts as ac
 
+# Distancia mínima para poder disparar sin solaparse
+DIST_MIN_DISPARO = 1.5
+
 class AtaqueSt(State):
     def __init__(self, name):
         super().__init__(name)
@@ -12,7 +15,7 @@ class AtaqueSt(State):
         orientation = perception[ac.TANK_ORIENTATION]
         can_fire = perception[ac.CAN_FIRE] == 1
 
-        # Determinamos el objetivo: jugador o command center
+        # Objetivo: jugador o command center
         tx = perception[ac.PLAYER_X] if perception[ac.PLAYER_X] >= 0 else perception[ac.COMMAND_CENTER_X]
         ty = perception[ac.PLAYER_Y] if perception[ac.PLAYER_Y] >= 0 else perception[ac.COMMAND_CENTER_Y]
 
@@ -21,31 +24,38 @@ class AtaqueSt(State):
 
         ax, ay = perception[ac.AGENT_X], perception[ac.AGENT_Y]
         dx, dy = tx - ax, ty - ay
+        dist = abs(dx) + abs(dy)
 
-        # Determinamos la dirección hacia el objetivo
-        # Usamos el eje con mayor diferencia para orientarnos
+        # Si estamos solapados con el objetivo no podemos disparar: retrocedemos
+        if dist < DIST_MIN_DISPARO:
+            # Nos alejamos en dirección contraria al objetivo
+            if abs(dx) >= abs(dy):
+                retroceso = ac.MOVE_LEFT if dx > 0 else ac.MOVE_RIGHT
+            else:
+                retroceso = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
+            return retroceso, False
+
+        # Orientamos hacia el objetivo por el eje de mayor diferencia
         if abs(dx) >= abs(dy):
             face_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
         else:
             face_dir = ac.MOVE_DOWN if dy > 0 else ac.MOVE_UP
 
-        # Si no estamos orientados hacia el objetivo, giramos
+        # Si no estamos bien orientados, giramos
         if orientation != face_dir:
             return face_dir, False
 
-        # Estamos orientados: disparamos
+        # Orientados y a buena distancia: disparamos
         return ac.NO_MOVE, can_fire
 
     def Transit(self, perception, map):
-        # Bala entrante: defenderse
         if self._bala_entrante(perception):
             return "Defensa"
 
-        # Vida baja y hay power-up: huir a por vida
         if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
             return "Huida"
 
-        # Ya no hay objetivo visible: volver a ejecutar el plan
+        # Sin objetivo visible: volver a planificar
         if perception[ac.PLAYER_X] < 0 and perception[ac.COMMAND_CENTER_X] < 0:
             return "ExecutePlan"
 
