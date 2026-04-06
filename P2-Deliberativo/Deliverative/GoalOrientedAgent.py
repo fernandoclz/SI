@@ -42,25 +42,48 @@ class GoalOrientedAgent(BaseAgent):
         self.agentInit   = False
 
     def Update(self, perception, map):
-        # Guardia para percepciones booleanas que llegan al inicio
-        if perception is True or perception is False:
-            return 0, True
-
-        # Inicializacion diferida: necesitamos el mapa y las posiciones reales
+        if perception is True or perception is False: return 0, True
         if not self.agentInit:
             self.InitAgent(perception, map)
             self.agentInit = True
 
-        action, shot = self.stateMachine.Update(perception, map, self)
+        # 1. ACTUALIZAR OBJETIVOS (Percepción fresca)
+        if perception[AgentConsts.PLAYER_X] >= 0:
+            goal3Player = self._CreatePlayerGoal(perception)
+            self.goalMonitor.UpdateGoals(goal3Player, GoalMonitor.GOAL_PLAYER)
 
-        # Actualizamos el goal del jugador en tiempo real (elemento dinamico)
-        goal3Player = self._CreatePlayerGoal(perception)
-        self.goalMonitor.UpdateGoals(goal3Player, GoalMonitor.GOAL_PLAYER)
-
-        # Replanificamos si el GoalMonitor lo considera necesario
-        if self.goalMonitor.NeedReplaning(perception, map, self):
+        # 2. REPLANIFICAR SI ES NECESARIO (Antes de moverte)
+        # Añadimos "or not self.plan" por seguridad
+        if self.goalMonitor.NeedReplaning(perception, map, self) or not self.plan or len(self.plan) == 0:
             self.problem.InitMap(map)
             self.plan = self._CreatePlan(perception, map)
+            print(f"🔄 Plan actualizado/generado. Pasos: {len(self.plan) if self.plan else 0}")
+
+        # 3. ACTUAR (Con el plan ya listo)
+        action, shot = self.stateMachine.Update(perception, map, self)
+
+        # 4. DEBUG A PRUEBA DE BALAS
+        # Si curentState es un objeto usamos su .id, si es un string (que es lo que te daba el error), lo casteamos directo.
+        curr_state = self.stateMachine.curentState
+        state_name = curr_state.id if hasattr(curr_state, 'id') else str(curr_state)
+        
+        # Extraemos el goal de forma segura
+        goal = self.problem.GetGoal() if self.problem else None
+        goal_val = goal.value if goal else "NONE"
+        
+        plan_len = len(self.plan) if self.plan else 0
+        
+        # Sacamos la posición actual del agente para compararla con el plan
+        ag_x = perception[AgentConsts.AGENT_X]
+        ag_y = perception[AgentConsts.AGENT_Y]
+        
+        # Un print limpio y alineado
+        print(f"[{state_name[:12]:<12}] Pos:({ag_x:.1f}, {ag_y:.1f}) | Goal:{goal_val} | Plan:{plan_len:2} | Act:{action} | Shot:{shot}")
+        
+        if plan_len > 0:
+            print(f"       -> Siguiente nodo: ({self.plan[0].x}, {self.plan[0].y})")
+        elif state_name == "ExecutePlan" or state_name == "GoalOrientedBehavior":
+            print(f"       ⚠️ ALERTA: Estado de ejecución, pero el PLAN ESTÁ VACÍO. El tanque podría quedarse congelado.")
 
         return action, shot
 
@@ -183,4 +206,4 @@ class GoalOrientedAgent(BaseAgent):
 
     def End(self, win):
         super().End(win)
-        self.stateMachine.End()
+        self.stateMachine.End(win)

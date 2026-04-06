@@ -1,12 +1,12 @@
 from StateMachine.State import State
 from States.AgentConsts import AgentConsts as ac
 
-# Distancia mínima para poder disparar sin solaparse
-DIST_MIN_DISPARO = 1.5
-
 class AtaqueSt(State):
     def __init__(self, name):
         super().__init__(name)
+        # Reducimos el margen. Si el paso del agente es de ~1.2, 
+        # un margen de 1.5 garantiza el rebote infinito.
+        self.dist_min_disparo = 0.8 
 
     def Start(self, agent):
         print("Estado Ataque iniciado")
@@ -26,26 +26,42 @@ class AtaqueSt(State):
         dx, dy = tx - ax, ty - ay
         dist = abs(dx) + abs(dy)
 
-        # Si estamos solapados con el objetivo no podemos disparar: retrocedemos
-        if dist < DIST_MIN_DISPARO:
-            # Nos alejamos en dirección contraria al objetivo
+        # 1. Tolerancia para evitar que intente corregir desviaciones milimétricas
+        TOLERANCIA = 0.5
+        aligned_x = abs(dy) <= TOLERANCIA
+        aligned_y = abs(dx) <= TOLERANCIA
+
+        # 2. ¡DISPARAR PRIMERO! 
+        # Si ya estamos alineados y miramos al objetivo, priorizamos el disparo.
+        # Esto evita que le demos la espalda para retroceder si ya tenemos el tiro limpio.
+        if aligned_x:
+            face_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
+            if orientation == face_dir:
+                return ac.NO_MOVE, can_fire
+                
+        elif aligned_y:
+            face_dir = ac.MOVE_DOWN if dy > 0 else ac.MOVE_UP
+            if orientation == face_dir:
+                return ac.NO_MOVE, can_fire
+
+        # 3. Retroceso (Solo si de verdad estamos muy, muy pegados y no estábamos apuntando bien)
+        if dist < self.dist_min_disparo:
             if abs(dx) >= abs(dy):
                 retroceso = ac.MOVE_LEFT if dx > 0 else ac.MOVE_RIGHT
             else:
                 retroceso = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
             return retroceso, False
 
-        # Orientamos hacia el objetivo por el eje de mayor diferencia
+        # 4. Orientar y movernos hacia el objetivo si aún no estamos alineados
         if abs(dx) >= abs(dy):
             face_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
         else:
             face_dir = ac.MOVE_DOWN if dy > 0 else ac.MOVE_UP
 
-        # Si no estamos bien orientados, giramos
+        # Si no estamos mirando en la dirección correcta, enviamos la acción para girar
         if orientation != face_dir:
             return face_dir, False
 
-        # Orientados y a buena distancia: disparamos
         return ac.NO_MOVE, can_fire
 
     def Transit(self, perception, map):

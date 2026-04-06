@@ -93,6 +93,8 @@ class BCProblem(Problem):
             return 1
         elif value == AgentConsts.BRICK or value == AgentConsts.SEMI_BREKABLE:
             return 3
+        elif value == AgentConsts.EXIT or value == AgentConsts.LIFE:
+            return 1  # la salida y la vida son casillas transitables
         else:
             return sys.maxsize
 

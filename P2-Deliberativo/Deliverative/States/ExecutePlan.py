@@ -92,6 +92,12 @@ class ExecutePlan(State):
         # Atascado: reseteamos y dejamos que GoalMonitor replanifique
         if self.noMovements > 5:
             self.noMovements = 0
+            if hasattr(self.agent, 'goalMonitor'):
+                self.agent.goalMonitor.ForceToRecalculate()
+                
+            # Si tienes un estado de "Idle" o "Espera", podrías transicionar a él aquí,
+            # pero si retornas self.id, al menos ahora el plan estará vacío en el próximo Update
+            # y se generará una nueva ruta.
             return self.id
 
         return self.id
@@ -175,9 +181,28 @@ class ExecutePlan(State):
         if direction == AgentConsts.MOVE_RIGHT: return 1.0, 0.0
         return -1.0, 0.0
 
-    def GetDirection(self, node, x, y):
-        if ExecutePlan.MoveDown(node, x, y):  return AgentConsts.MOVE_DOWN
-        if ExecutePlan.MoveUp(node, x, y):    return AgentConsts.MOVE_UP
-        if ExecutePlan.MoveRight(node, x, y): return AgentConsts.MOVE_RIGHT
-        if ExecutePlan.MoveLeft(node, x, y):  return AgentConsts.MOVE_LEFT
-        return AgentConsts.NO_MOVE
+    def GetDirection(self, current_node, x, y):
+        target_x = current_node.x + 0.5
+        target_y = current_node.y + 0.5
+        diff_x = target_x - x
+        diff_y = target_y - y
+        
+        # Tolerancia dinámica: si ya estamos alineados, permitimos más error
+        # para evitar el "serpenteo"
+        tolerance = 0.15
+
+        # Si la diferencia en un eje es mínima, ignoramos la corrección de ese eje
+        if abs(diff_x) < 0.1: diff_x = 0
+        if abs(diff_y) < 0.1: diff_y = 0
+
+        # Priorizar el eje donde la distancia es mayor
+        if abs(diff_x) > abs(diff_y):
+            # Si el desvío lateral (Y) es muy grande, corregimos antes de avanzar en X
+            if abs(diff_y) > tolerance:
+                return AgentConsts.MOVE_DOWN if diff_y > 0 else AgentConsts.MOVE_UP
+            return AgentConsts.MOVE_RIGHT if diff_x > 0 else AgentConsts.MOVE_LEFT
+        else:
+            # Si el desvío lateral (X) es muy grande, corregimos antes de avanzar en Y
+            if abs(diff_x) > tolerance:
+                return AgentConsts.MOVE_RIGHT if diff_x > 0 else AgentConsts.MOVE_LEFT
+            return AgentConsts.MOVE_DOWN if diff_y > 0 else AgentConsts.MOVE_UP
