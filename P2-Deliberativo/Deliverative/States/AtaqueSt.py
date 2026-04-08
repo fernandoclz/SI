@@ -40,7 +40,7 @@ class AtaqueSt(State):
                 return ac.NO_MOVE, can_fire
                 
         elif aligned_y:
-            face_dir = ac.MOVE_DOWN if dy > 0 else ac.MOVE_UP
+            face_dir = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
             if orientation == face_dir:
                 return ac.NO_MOVE, can_fire
 
@@ -56,13 +56,9 @@ class AtaqueSt(State):
         if abs(dx) >= abs(dy):
             face_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
         else:
-            face_dir = ac.MOVE_DOWN if dy > 0 else ac.MOVE_UP
+            face_dir = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
 
-        # Si no estamos mirando en la dirección correcta, enviamos la acción para girar
-        if orientation != face_dir:
-            return face_dir, False
-
-        return ac.NO_MOVE, can_fire
+        return face_dir, can_fire
 
     def Transit(self, perception, map):
         if self._bala_entrante(perception):

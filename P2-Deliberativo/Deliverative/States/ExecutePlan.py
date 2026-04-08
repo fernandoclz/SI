@@ -61,8 +61,11 @@ class ExecutePlan(State):
             shot = shot or (self.lastMove == move and perception[AgentConsts.CAN_FIRE] == 1)
         elif len(plan) <= 1 and goal.value == AgentConsts.EXIT:
             # Llegamos a la salida: replanificamos (el juego debería terminar o buscar otro objetivo)
-            agent.goalMonitor.ForceToRecalculate()
             move = self.GetDirection(nextNode, x, y)
+            dist_x = abs((nextNode.x + 0.5) - x)
+            dist_y = abs((nextNode.y + 0.5) - y)
+            if dist_x < 0.15 and dist_y < 0.15:
+                move = AgentConsts.NO_MOVE
         else:
             move = self.GetDirection(nextNode, x, y)
             # Disparar para romper ladrillos en ruta
