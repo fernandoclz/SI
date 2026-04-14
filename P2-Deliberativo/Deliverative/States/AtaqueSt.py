@@ -1,21 +1,25 @@
 from StateMachine.State import State
 from States.AgentConsts import AgentConsts as ac
 
+
 class AtaqueSt(State):
     def __init__(self, name):
         super().__init__(name)
-        # Reducimos el margen. Si el paso del agente es de ~1.2, 
-        # un margen de 1.5 garantiza el rebote infinito.
-        self.dist_min_disparo = 0.8 
+        self.dist_min_disparo = 0.8
+        self._ticks_sin_progreso = 0
+        self._last_dist = None
+        self._en_posicion = False  # flag: estamos dentro del umbral disparando
 
     def Start(self, agent):
         print("Estado Ataque iniciado")
+        self._ticks_sin_progreso = 0
+        self._last_dist = None
+        self._en_posicion = False
 
     def Update(self, perception, map, agent):
         orientation = perception[ac.TANK_ORIENTATION]
         can_fire = perception[ac.CAN_FIRE] == 1
 
-        # Objetivo: jugador o command center
         tx = perception[ac.PLAYER_X] if perception[ac.PLAYER_X] >= 0 else perception[ac.COMMAND_CENTER_X]
         ty = perception[ac.PLAYER_Y] if perception[ac.PLAYER_Y] >= 0 else perception[ac.COMMAND_CENTER_Y]
 
@@ -26,39 +30,65 @@ class AtaqueSt(State):
         dx, dy = tx - ax, ty - ay
         dist = abs(dx) + abs(dy)
 
-        # 1. Tolerancia para evitar que intente corregir desviaciones milimétricas
+        # Paso del motor físico observado empíricamente (~1.2 unidades/tick)
+        # El umbral debe ser mayor que un paso para absorber overshoot
+        UMBRAL_PARADA = 1.8
+
+        # Calcular la mejor dirección de disparo
+        if abs(dx) >= abs(dy):
+            best_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
+        else:
+            best_dir = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
+
+        # --- 1. Dentro del umbral: modo estático ---
+        if dist < UMBRAL_PARADA:
+            self._en_posicion = True
+            # Resetear contador: no estamos atascados, estamos en posición
+            self._ticks_sin_progreso = 0
+            self._last_dist = None
+
+            if orientation == best_dir:
+                # Apuntando: disparar sin moverse
+                return ac.NO_MOVE, can_fire
+            else:
+                # Girando: disparar igualmente en la dirección actual
+                # (puede acertar si hay algo en esa línea)
+                agent.directionToLook = best_dir - 1
+                return ac.NO_MOVE, can_fire
+
+        # --- 2. Fuera del umbral: tracking de progreso ---
+        self._en_posicion = False
+        if self._last_dist is not None:
+            if dist >= self._last_dist - 0.05:
+                self._ticks_sin_progreso += 1
+            else:
+                self._ticks_sin_progreso = 0
+        self._last_dist = dist
+
         TOLERANCIA = 0.5
         aligned_x = abs(dy) <= TOLERANCIA
         aligned_y = abs(dx) <= TOLERANCIA
 
-        # 2. ¡DISPARAR PRIMERO! 
-        # Si ya estamos alineados y miramos al objetivo, priorizamos el disparo.
-        # Esto evita que le demos la espalda para retroceder si ya tenemos el tiro limpio.
+        # --- 3. Alineado: disparar desde aquí sin moverse ---
+        # Si estamos en la misma fila/columna que el objetivo, no hay que acercarse:
+        # giramos, disparamos y esperamos. Marcamos _en_posicion para no detectar atasco.
         if aligned_x:
+            self._en_posicion = True
+            self._ticks_sin_progreso = 0
             face_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
-            if orientation == face_dir:
-                return ac.NO_MOVE, can_fire
-                
+            agent.directionToLook = face_dir - 1
+            return ac.NO_MOVE, can_fire
+
         elif aligned_y:
+            self._en_posicion = True
+            self._ticks_sin_progreso = 0
             face_dir = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
-            if orientation == face_dir:
-                return ac.NO_MOVE, can_fire
+            agent.directionToLook = face_dir - 1
+            return ac.NO_MOVE, can_fire
+            
 
-        # 3. Retroceso (Solo si de verdad estamos muy, muy pegados y no estábamos apuntando bien)
-        if dist < self.dist_min_disparo:
-            if abs(dx) >= abs(dy):
-                retroceso = ac.MOVE_LEFT if dx > 0 else ac.MOVE_RIGHT
-            else:
-                retroceso = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
-            return retroceso, False
-
-        # 4. Orientar y movernos hacia el objetivo si aún no estamos alineados
-        if abs(dx) >= abs(dy):
-            face_dir = ac.MOVE_RIGHT if dx > 0 else ac.MOVE_LEFT
-        else:
-            face_dir = ac.MOVE_UP if dy > 0 else ac.MOVE_DOWN
-
-        return face_dir, can_fire
+        # --- 4. Mover hacia el objetivo ---
+        return best_dir, can_fire
 
     def Transit(self, perception, map):
         if self._bala_entrante(perception):
@@ -67,8 +97,17 @@ class AtaqueSt(State):
         if perception[ac.HEALTH] <= 1 and perception[ac.LIFE_X] >= 0:
             return "Huida"
 
-        # Sin objetivo visible: volver a planificar
-        if perception[ac.PLAYER_X] < 0 and perception[ac.COMMAND_CENTER_X] < 0:
+        player_visible = perception[ac.PLAYER_X] >= 0
+        cc_visible     = perception[ac.COMMAND_CENTER_X] >= 0
+
+        if not player_visible and not cc_visible:
+            return "ExecutePlan"
+
+        # Solo detectar atasco si NO estamos en posición de disparo
+        if not self._en_posicion and self._ticks_sin_progreso > 8:
+            print(f"[Ataque] Atasco real tras {self._ticks_sin_progreso} ticks → ExecutePlan")
+            self._ticks_sin_progreso = 0
+            self._last_dist = None
             return "ExecutePlan"
 
         return self.id

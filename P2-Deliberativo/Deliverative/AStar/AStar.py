@@ -55,4 +55,30 @@ class AStar:
         while current is not None:
             path.append(current)
             current = current.GetParent()
-        return path[::-1]
+        path = path[::-1]
+
+        if len(path) <= 2:
+            return path[1:] if len(path) > 1 else path 
+        
+        clean = [path[0]]
+
+        for i in range(1, len(path) - 1):
+            prev_node = path[i - 1]
+            curr_node = path[i]
+            next_node = path[i + 1]
+            
+            # Calcular vectores de dirección (deltas)
+            dx1 = curr_node.x - prev_node.x
+            dy1 = curr_node.y - prev_node.y
+            
+            dx2 = next_node.x - curr_node.x
+            dy2 = next_node.y - curr_node.y
+            
+            # Si la dirección cambia, es una esquina. La guardamos.
+            if dx1 != dx2 or dy1 != dy2:
+                clean.append(curr_node)
+                
+        # 3. Siempre incluimos el nodo final (la meta)
+        clean.append(path[-1])
+
+        return clean[1:]

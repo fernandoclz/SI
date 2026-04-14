@@ -38,10 +38,11 @@ class BCProblem(Problem):
             nx, ny = node.x + dx, node.y + dy
             if 0 <= nx < self.xSize and 0 <= ny < self.ySize:
                 value = int(self.map[nx][ny])  # cast explícito
-                cost = BCProblem.GetCost(value)
-                if cost < sys.maxsize:
-                    nuevo_nodo = BCNode(None, cost, value, nx, ny)
-                    successors.append(nuevo_nodo)
+                if BCProblem.CanMove(value):
+                    cost = BCProblem.GetCost(value)
+                    if cost < sys.maxsize:
+                        nuevo_nodo = BCNode(None, cost, value, nx, ny)
+                        successors.append(nuevo_nodo)
         return successors
 
     def GetGCostBetween(self, nodeFrom, nodeTo):

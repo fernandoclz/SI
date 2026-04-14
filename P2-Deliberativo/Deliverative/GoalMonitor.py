@@ -35,10 +35,6 @@ class GoalMonitor:
             self.lastTime = tiempo_actual
             return True
 
-        if not agent.plan:
-            self.lastTime = tiempo_actual
-            return True
-
         return False
 
     def SelectGoal(self, perception, map, agent):
